@@ -1,4 +1,5 @@
-base_output: '/results/'
+path_out: '/results2/'
+config_file: 'foobar'
 data:
   path_train: 'data/train/'
   path_val: 'data/val/'
