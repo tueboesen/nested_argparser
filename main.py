@@ -8,151 +8,19 @@ import pathlib
 from os.path import exists
 from types import FunctionType
 
-
-def set_existing_defaults(argparser: argparse.ArgumentParser, **kwargs):
-    """
-    Works the same as argparser.set_default except it does not create new arguments.
-    :param argparser:
-    :param kwargs:
-    :return:
-    """
-    for kwarg in kwargs:
-        if kwarg in argparser._defaults:
-            argparser._defaults.update(kwarg)
-    for action in argparser._actions:
-        if action.dest in kwargs:
-            action.default = kwargs[action.dest]
-    return argparser
-
-def combine_namespaces(main_namespace, **aux_namespaces):
-    """
-    Adds a dictionary of auxiliary namespaces to a main namespace
-    :param main_namespace:
-    :param aux_namespaces:
-    :return:
-    """
-    for key,val in aux_namespaces.items():
-        setattr(main_namespace, key, val)
-    return main_namespace
-
-def create_custom_argparser(name: str, arguments_fnc: FunctionType, default_value: Optional[dict] = None):
-    """
-    Creates an argparser and adds all the arguments in argument_fnc to it, and sets the default values according to default_value.
-    """
-    named_parser = argparse.ArgumentParser(name)
-    named_parser = arguments_fnc(named_parser)
-    if default_value:
-        named_parser = set_existing_defaults(named_parser, **default_value)
-    sub_args = named_parser.parse_args()
-    return sub_args
-
-def create_custom_argparsers(names: list[str], argument_fncs: list[FunctionType], default_values: Optional[dict] = None):
-    """
-    Creates a dictionary of namespaces.
-    :param names: a list of the names for the various namespaces
-    :param argument_fncs: a list of add_arguments for the corresponding namespace
-    :param default_values: a nested dictionary of default values for the argparser.
-    :return:
-    """
-    aux_args = {}
-    for name, argument_fnc in zip(names,argument_fncs):
-        try: # By using try we can also handle incomplete configuration files that only have some group values.
-            aux_args[name] = create_custom_argparser(name, argument_fnc, default_values[name])
-        except:
-            aux_args[name] = create_custom_argparser(name, argument_fnc)
-    return aux_args
-
-
-def data_args(parser: argparse.ArgumentParser):
-    parser.add_argument('--path_train',type=pathlib.Path, help='Path to the training samples')
-    parser.add_argument('--path_val',type=pathlib.Path, help='Path to the validation samples')
-    parser.add_argument('--path_test',type=pathlib.Path, help='Path to the test samples')
-    return parser
-
-def network_args(parser: argparse.ArgumentParser):
-    parser.add_argument('--network_type',type=str, choices=['lstm', 'mlp'], help='Choose the network architecture type')
-    parser.add_argument('--lr',type=float, default=0.5, help='Learning rate')
-    return parser
-
-def main_args(parser: argparse.ArgumentParser):
-    parser.add_argument('--path_out',type=pathlib.Path, default='./results/', help='The base folder where all output is saved')
-    return parser
-
-def prelim_args(parser: argparse.ArgumentParser):
-    parser.add_argument('--config_file',type=pathlib.Path, default='config.yaml', help='If this is given it should set default for the other argparser arguments')
-    return parser
-
-def to_dict(obj):
-    return json.loads(json.dumps(obj, default=lambda o: o.__dict__))
-
-
-def save_configuration_file(filename: pathlib.Path, args, write_all_parameters= False):
-    """
-    This will save a nested namespace as a configuration yaml file.
-
-    It converts the namespaces to dictionary objects and convert all posix paths into strings.
-    :param filename:
-    :param args:
-    :param write_all_parameters: Does not write variables that are None or empty
-    :return:
-    """
-    def fix_dict(dict_obj):
-        for key, val in list(dict_obj.items()): # List makes a copy, such that we can delete while iterating
-            if not write_all_parameters and (val is None or val is ''):
-                del dict_obj[key]
-            elif isinstance(val, pathlib.Path):
-                dict_obj[key] = str(val)
-            elif isinstance(val, argparse.Namespace):
-                dict_obj_sub = val.__dict__
-                dict_obj_sub = fix_dict(dict_obj_sub)
-                dict_obj[key] = dict_obj_sub
-        return dict_obj
-
-    cfg = deepcopy(args)
-    # First we convert all posix paths to strings
-    cfg_dict = cfg.__dict__
-    cfg_dict = fix_dict(cfg_dict)
-
-    with open(filename, 'w') as f:
-        yaml.dump(cfg_dict, f)
-    return
-
+from args import data_args, prelim_args, network_args, main_args
+from nested_argparser import parse_nested_argparser, save_configuration_file
 
 
 def parse_args():
-    groups = ['data', 'network']
-    arg_fncs = [data_args, network_args]
 
-    # First we create the full parser in a flat structure, this is needed for the argparser to behave well when probed on the command line
-    parser_flat = argparse.ArgumentParser("My awesome program")
-    parser_flat = main_args(parser_flat)
-    parser_flat = prelim_args(parser_flat)
-    for group, arg_fnc in zip(groups,arg_fncs):
-        parser_flat = arg_fnc(parser_flat)
-    _ = parser_flat.parse_args()
-
-    # Next we create the preliminary argparser, which ensures we get the default values from the conf file.
-    parser_prelim = argparse.ArgumentParser("Prelim")
-    parser_prelim = prelim_args(parser_prelim)
-    args_prelim = parser_prelim.parse_args()
-    if exists(args_prelim.config_file):
-        try:
-            with open(args_prelim.config_file, 'r') as f:
-                conf = yaml.safe_load(f)
-        except IOError:
-            print(f"Failed to load {args_prelim.config_file} as a yaml file.")
-    else:
-        conf = None
-
-    # Finally we create the main argparser
-    parser_main =  argparse.ArgumentParser("Main")
-    parser_main = main_args(parser_main)
-    parser_main = set_existing_defaults(parser_main,**conf) # Note that we use set_existing_defaults before loading in the preliminary.
-    parser_main = prelim_args(parser_main)
-    args_main = parser_main.parse_args()
-
-    aux_args = create_custom_argparsers(groups, arg_fncs, conf)
-    args = combine_namespaces(args_main, **aux_args)
+    dict_args = {
+        'main': main_args,
+        'preliminary': prelim_args,
+        'data': data_args,
+        'network': network_args,
+    }
+    args = parse_nested_argparser(dict_args)
     filename = 'test.yaml'
     save_configuration_file(filename, args)
 
