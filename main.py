@@ -95,7 +95,7 @@ def parse_args():
         parser_flat = arg_fnc(parser_flat)
     _ = parser_flat.parse_args()
 
-    # Next we create the preliminary argparser
+    # Next we create the preliminary argparser, which ensures we get the default values from the conf file.
     parser_prelim = argparse.ArgumentParser("Prelim")
     parser_prelim = prelim_args(parser_prelim)
     args_prelim = parser_prelim.parse_args()
@@ -108,7 +108,7 @@ def parse_args():
     else:
         conf = None
 
-    # Next we create the main argparser
+    # Finally we create the main argparser
     parser_main =  argparse.ArgumentParser("Main")
     parser_main = main_args(parser_main)
     parser_main = set_existing_defaults(parser_main,**conf) # Note that we use set_existing_defaults before loading in the preliminary.
