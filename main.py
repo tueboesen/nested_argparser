@@ -1,3 +1,5 @@
+import json
+from copy import deepcopy
 from typing import Optional
 
 import yaml
@@ -54,9 +56,9 @@ def create_custom_argparsers(names: list[str], argument_fncs: list[FunctionType]
     """
     aux_args = {}
     for name, argument_fnc in zip(names,argument_fncs):
-        if default_values:
+        try: # By using try we can also handle incomplete configuration files that only have some group values.
             aux_args[name] = create_custom_argparser(name, argument_fnc, default_values[name])
-        else:
+        except:
             aux_args[name] = create_custom_argparser(name, argument_fnc)
     return aux_args
 
@@ -80,6 +82,40 @@ def prelim_args(parser: argparse.ArgumentParser):
     parser.add_argument('--config_file',type=pathlib.Path, default='config.yaml', help='If this is given it should set default for the other argparser arguments')
     return parser
 
+def to_dict(obj):
+    return json.loads(json.dumps(obj, default=lambda o: o.__dict__))
+
+
+def save_configuration_file(filename: pathlib.Path, args, write_all_parameters= False):
+    """
+    This will save a nested namespace as a configuration yaml file.
+
+    It converts the namespaces to dictionary objects and convert all posix paths into strings.
+    :param filename:
+    :param args:
+    :param write_all_parameters: Does not write variables that are None or empty
+    :return:
+    """
+    def fix_dict(dict_obj):
+        for key, val in list(dict_obj.items()): # List makes a copy, such that we can delete while iterating
+            if not write_all_parameters and (val is None or val is ''):
+                del dict_obj[key]
+            elif isinstance(val, pathlib.Path):
+                dict_obj[key] = str(val)
+            elif isinstance(val, argparse.Namespace):
+                dict_obj_sub = val.__dict__
+                dict_obj_sub = fix_dict(dict_obj_sub)
+                dict_obj[key] = dict_obj_sub
+        return dict_obj
+
+    cfg = deepcopy(args)
+    # First we convert all posix paths to strings
+    cfg_dict = cfg.__dict__
+    cfg_dict = fix_dict(cfg_dict)
+
+    with open(filename, 'w') as f:
+        yaml.dump(cfg_dict, f)
+    return
 
 
 
@@ -117,6 +153,9 @@ def parse_args():
 
     aux_args = create_custom_argparsers(groups, arg_fncs, conf)
     args = combine_namespaces(args_main, **aux_args)
+    filename = 'test.yaml'
+    save_configuration_file(filename, args)
+
     return args
 
 
