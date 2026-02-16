@@ -1,3 +1,5 @@
+from typing import Optional
+
 import yaml
 import argparse
 import pathlib
@@ -31,13 +33,14 @@ def combine_namespaces(main_namespace, **aux_namespaces):
         setattr(main_namespace, key, val)
     return main_namespace
 
-def create_custom_argparser(name: str, arguments_fnc: FunctionType, default_value: dict):
+def create_custom_argparser(name: str, arguments_fnc: FunctionType, default_value: Optional[dict] = None):
     """
     Creates an argparser and adds all the arguments in argument_fnc to it, and sets the default values according to default_value.
     """
     named_parser = argparse.ArgumentParser(name)
     named_parser = arguments_fnc(named_parser)
-    named_parser = set_existing_defaults(named_parser, **default_value)
+    if default_value:
+        named_parser = set_existing_defaults(named_parser, **default_value)
     sub_args = named_parser.parse_args()
     return sub_args
 
@@ -56,37 +59,44 @@ def create_custom_argparsers(names: list[str], argument_fncs: list[FunctionType]
 
 
 def data_args(parser: argparse.ArgumentParser):
-    parser.add_argument('--path_train',type=pathlib.Path, help='should be part of data namespace')
-    parser.add_argument('--path_val',type=pathlib.Path, help='should be part of data namespace')
-    parser.add_argument('--path_test',type=pathlib.Path, help='should be part of data namespace')
+    parser.add_argument('--path_train',type=pathlib.Path, help='Path to the training samples')
+    parser.add_argument('--path_val',type=pathlib.Path, help='Path to the validation samples')
+    parser.add_argument('--path_test',type=pathlib.Path, help='Path to the test samples')
     return parser
 
 def network_args(parser: argparse.ArgumentParser):
-    parser.add_argument('--network_type',type=str, choices=['lstm', 'mlp'], help='should be part of network namespace')
-    parser.add_argument('--lr',type=float, help='should be part of network namespace')
+    parser.add_argument('--network_type',type=str, choices=['lstm', 'mlp'], help='Choose the network architecture type')
+    parser.add_argument('--lr',type=float, help='Learning rate')
+    return parser
+
+def main_args(parser: argparse.ArgumentParser):
+    parser.add_argument('--config_file',type=pathlib.Path, default='config.yaml', help='If this is given it should set default for the other argparser arguments')
     return parser
 
 
-
-
-
-
 def parse_args():
-    prelim_parser = argparse.ArgumentParser("prelim")
-    prelim_parser.add_argument('--config_file',type=pathlib.Path, default='config.yaml', help='If this is given it should set default for the other argparser arguments')
-    args_prelim = prelim_parser.parse_args()
-
-    if exists(args_prelim.config_file):
-        try:
-            with open(args_prelim.config_file, 'r') as f:
-                conf = yaml.safe_load(f)
-        except IOError:
-            print(f"Failed to load {args_prelim.config_file} as a yaml file.")
-
     groups = ['data', 'network']
     arg_fncs = [data_args, network_args]
+
+    # First we create the full parser in a flat structure, this is needed for the argparser to behave well when probed on the command line
+    parser_flat = argparse.ArgumentParser("My awesome program")
+    for group, arg_fnc in zip(groups,arg_fncs):
+        parser_flat = arg_fnc(parser_flat)
+    _ = parser_flat.parse_args()
+
+    # Next we create the preliminary main argparser
+    parser_main = argparse.ArgumentParser("Prelim")
+    parser_main = main_args(parser_main)
+    args_main = parser_main.parse_args()
+    if exists(args_main.config_file):
+        try:
+            with open(args_main.config_file, 'r') as f:
+                conf = yaml.safe_load(f)
+        except IOError:
+            print(f"Failed to load {args_main.config_file} as a yaml file.")
+
     aux_args = create_custom_argparsers(groups, arg_fncs, conf)
-    args = combine_namespaces(args_prelim, **aux_args)
+    args = combine_namespaces(args_main, **aux_args)
     return args
 
 
@@ -96,6 +106,5 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
+    print(args)
 
-
-    print("here")
