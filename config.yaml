@@ -1,0 +1,8 @@
+base_output: '/results/'
+data:
+  path_train: 'data/train/'
+  path_val: 'data/val/'
+  wrong: True
+network:
+  network_type: 'lstm'
+  lr: 0.1
