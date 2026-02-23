@@ -66,7 +66,7 @@ def set_existing_defaults(argparser: argparse.ArgumentParser, **kwargs):
     """
     for kwarg in kwargs:
         if kwarg in argparser._defaults:
-            argparser._defaults.update(kwarg)
+            argparser._defaults.update(*kwarg)
     for action in argparser._actions:
         if action.dest in kwargs:
             action.default = kwargs[action.dest]
@@ -108,32 +108,35 @@ def create_custom_argparsers(sub_args: dict, default_values: Optional[dict] = No
             aux_args[name] = create_custom_argparser(name, argument_fnc)
     return aux_args
 
-def save_configuration_file(filename: pathlib.Path, args, write_all_parameters= False):
+def save_configuration_file(filename: pathlib.Path, args: argparse.Namespace, write_all_parameters: bool = False):
     """
     This will save a nested namespace as a configuration yaml file.
 
     It converts the namespaces to dictionary objects and convert all posix paths into strings.
     :param filename:
-    :param args:
+    :param args: namespace object
     :param write_all_parameters: Does not write variables that are None or empty
     :return:
     """
-    def fix_dict(dict_obj):
+    def fix_dict(dict_obj, keep_empty_keys: bool):
+        """
+        A recursive method that converts namespaces to dictionaries and pathlib.Paths to strings.
+        if keep_empty_keys is false then any dictionary item with value of None or '' is deleted before saving.
+        """
         for key, val in list(dict_obj.items()): # List makes a copy, such that we can delete while iterating
-            if not write_all_parameters and (val is None or val is ''):
+            if not keep_empty_keys and (val is None or val == ''):
                 del dict_obj[key]
             elif isinstance(val, pathlib.Path):
                 dict_obj[key] = str(val)
             elif isinstance(val, argparse.Namespace):
                 dict_obj_sub = val.__dict__
-                dict_obj_sub = fix_dict(dict_obj_sub)
+                dict_obj_sub = fix_dict(dict_obj_sub, keep_empty_keys)
                 dict_obj[key] = dict_obj_sub
         return dict_obj
 
-    cfg = deepcopy(args)
-    # First we convert all posix paths to strings
+    cfg = deepcopy(args) # Make sure we work on a copy since our operations changes the object before saving it.
     cfg_dict = cfg.__dict__
-    cfg_dict = fix_dict(cfg_dict)
+    cfg_dict = fix_dict(cfg_dict, write_all_parameters)
 
     with open(filename, 'w') as f:
         yaml.dump(cfg_dict, f)

@@ -21,7 +21,7 @@ def parse_args():
         'network': network_args,
     }
     args = parse_nested_argparser(dict_args)
-    filename = 'test.yaml'
+    filename = pathlib.Path('test.yaml')
     save_configuration_file(filename, args)
 
     return args
